@@ -62,7 +62,7 @@ phishing-email-detection/
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/phishing-email-detection.git
+   git clone https://github.com/AbubakarMahmood1/Phishing-Email-Detection-System.git
    cd phishing-email-detection
    ```
 
