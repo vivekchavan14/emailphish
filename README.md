@@ -17,7 +17,7 @@ Phishing remains a prevalent cybersecurity threat, with over 30 crore people in 
 ## 🛠️ Technical Architecture
 The system follows a modular architecture:
 
-![System Architecture](media/image1.png)
+![System Architecture](media/architecture-diagram.svg)
 
 ### Components:
 - **Frontend**: Responsive web interface built with HTML, CSS and JavaScript
