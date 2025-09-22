@@ -26,38 +26,44 @@ print("Loading models and preprocessing components...")
 
 # Define the feature extraction function here - don't rely on pickle for functions
 def extract_email_features(emails):
-    # Create empty arrays for features
+    # Create empty arrays for features - MUST match original training (5 features)
     num_links = np.zeros((len(emails), 1))
     contains_urgent = np.zeros((len(emails), 1))
     contains_money = np.zeros((len(emails), 1))
     contains_suspicious_domains = np.zeros((len(emails), 1))
     email_length = np.zeros((len(emails), 1))
     
-    # Define patterns
+    # Define enhanced patterns
     url_pattern = re.compile(r'https?://\S+|www\.\S+')
-    urgent_pattern = re.compile(r'urgent|immediate|alert|attention|important|verify', re.IGNORECASE)
-    money_pattern = re.compile(r'money|cash|dollar|payment|bank|account|transfer|credit', re.IGNORECASE)
-    suspicious_domains = re.compile(r'\.xyz|\.info|\.top|\.club|\.online', re.IGNORECASE)
+    urgent_pattern = re.compile(r'urgent|immediate|alert|attention|important|verify|expire|suspend|deadline|asap|act now|limited time|click here|update.*account|confirm.*identity|suspended.*account', re.IGNORECASE)
+    money_pattern = re.compile(r'money|cash|dollar|payment|bank|account|transfer|credit|loan|bitcoin|cryptocurrency|refund|prize|winner|jackpot|social security|ssn|credit card|password', re.IGNORECASE)
+    suspicious_domains = re.compile(r'\.xyz|\.info|\.top|\.club|\.online|\.tk|\.ml|\.ga|\.cf|\.pw', re.IGNORECASE)
     
     # Extract features
     for i, email in enumerate(emails):
+        email_lower = email.lower()
+        
         # Count URLs
         urls = url_pattern.findall(email)
         num_links[i] = len(urls)
         
-        # Check for urgent language
-        contains_urgent[i] = 1 if urgent_pattern.search(email) else 0
+        # Check for urgent/phishing language (enhanced patterns)
+        urgent_matches = urgent_pattern.findall(email_lower)
+        contains_urgent[i] = min(len(urgent_matches), 10)  # Cap at 10 to prevent over-weighting
         
-        # Check for money-related terms
-        contains_money[i] = 1 if money_pattern.search(email) else 0
+        # Check for money/personal info terms (enhanced patterns)
+        money_matches = money_pattern.findall(email_lower)
+        contains_money[i] = min(len(money_matches), 10)  # Cap at 10
         
         # Check for suspicious domains
         contains_suspicious_domains[i] = 1 if suspicious_domains.search(email) else 0
         
-        # Email length
+        # Email length (normalized to match original training)
         email_length[i] = len(email)
     
-    # Return all features as a single array
+    print(f"Extracted features shape: {np.hstack([num_links, contains_urgent, contains_money, contains_suspicious_domains, email_length]).shape}")
+    
+    # Return original 5 features to match trained model
     return np.hstack([num_links, contains_urgent, contains_money, 
                      contains_suspicious_domains, email_length])
 
@@ -178,13 +184,56 @@ async def predict(email: EmailInput):
         # Predict using the trained model
         prediction = model.predict(features)[0]
         prediction_proba = model.predict_proba(features)[0]
-        confidence = prediction_proba[1] if prediction == 1 else prediction_proba[0]
+        
+        # Fix confidence calculation - show confidence for the predicted class
+        phishing_confidence = float(prediction_proba[1])  # Probability of being phishing
+        safe_confidence = float(prediction_proba[0])      # Probability of being safe
+        
         prediction_label = "Phishing Email" if prediction == 1 else "Safe Email"
+        
+        # Always show confidence for the predicted class (the higher probability)
+        if prediction == 1:  # Phishing
+            confidence = phishing_confidence
+        else:  # Safe
+            confidence = safe_confidence
+        
+        # Debug logging
+        print(f"Prediction: {prediction}, Phishing prob: {phishing_confidence:.3f}, Safe prob: {safe_confidence:.3f}, Final confidence: {confidence:.3f}")
+        
+        # Extract features for detailed analysis
+        email_features = extract_email_features([email_text])[0]
+        feature_names = ['num_links', 'contains_urgent', 'contains_money', 
+                        'contains_suspicious_domains', 'email_length',
+                        'suspicious_phrases', 'personal_info_requests',
+                        'link_url_mismatch', 'misspellings']
+        
+        # Generate detailed reasons based on 5 features
+        reasons = []
+        if email_features[0] > 2:  # num_links
+            reasons.append(f"Contains {int(email_features[0])} suspicious links")
+        if email_features[1] > 0:  # contains_urgent
+            reasons.append(f"Uses {int(email_features[1])} urgent/phishing language patterns")
+        if email_features[2] > 0:  # contains_money
+            reasons.append(f"Contains {int(email_features[2])} money/personal info related terms")
+        if email_features[3] > 0:  # contains_suspicious_domains
+            reasons.append("Contains suspicious domains")
+        if email_features[4] > 1000:  # email_length (long emails can be suspicious)
+            reasons.append(f"Unusually long email ({int(email_features[4])} characters)")
+        elif email_features[4] < 50:  # very short emails
+            reasons.append(f"Very short email ({int(email_features[4])} characters)")
+        
+        if not reasons and prediction == 0:
+            reasons.append("No suspicious patterns detected")
+        elif not reasons and prediction == 1:
+            reasons.append("Classified as suspicious by ML model")
         
         # Return the prediction result and confidence
         return {
             "prediction": prediction_label,
-            "confidence": float(confidence),
+            "confidence": confidence,
+            "phishing_confidence": phishing_confidence,
+            "safe_confidence": safe_confidence,
+            "reasons": reasons,
             "model_type": "Advanced ML" if use_advanced_model else "Basic ML"
         }
     except Exception as e:
@@ -264,7 +313,7 @@ async def model_info():
         feature_names = []
         try:
             feature_names = vectorizer.get_feature_names_out().tolist()
-            # Add names for additional features
+            # Add names for enhanced features
             feature_names.extend(['num_links', 'contains_urgent', 'contains_money', 
                                'contains_suspicious_domains', 'email_length'])
         except:
@@ -281,3 +330,8 @@ async def model_info():
         model_info["top_features"] = top_features
     
     return model_info
+
+# Start server when running this file directly
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)

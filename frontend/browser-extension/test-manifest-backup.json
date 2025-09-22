@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "PhishMail Guard Test",
+  "version": "1.0.0",
+  "description": "Test extension to verify loading works",
+  "action": {
+    "default_popup": "test-popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png"
+  }
+}

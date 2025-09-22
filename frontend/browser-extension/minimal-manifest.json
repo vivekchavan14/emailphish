@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "MINIMAL TEST",
+  "version": "1.0.0",
+  "description": "Minimal test",
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["ultra-simple.js"]
+    }
+  ]
+}
