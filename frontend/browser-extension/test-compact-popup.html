@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultra-Compact Phishing Alert Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .test-container h1 {
+            color: #1f2937;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .test-container p {
+            color: #6b7280;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .test-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .test-btn {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .test-btn:active {
+            transform: translateY(0);
+        }
+
+        .test-btn.high-danger {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+        }
+
+        .test-btn.warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .test-btn.caution {
+            background: linear-gradient(135deg, #f97316, #ea580c);
+        }
+
+        .test-btn.safe {
+            background: linear-gradient(135deg, #059669, #047857);
+        }
+
+        .test-btn.clear {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+        }
+
+        .info-box {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .info-box h3 {
+            color: #0c4a6e;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .comparison-item {
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .comparison-item.before {
+            background: #fee2e2;
+            border-left: 4px solid #dc2626;
+        }
+
+        .comparison-item.after {
+            background: #dcfce7;
+            border-left: 4px solid #059669;
+        }
+
+        .comparison-item h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .comparison-item ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .code-box {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            text-align: left;
+            margin-top: 15px;
+            overflow-x: auto;
+        }
+
+        .highlight {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .demo-note {
+            background: #fffbeb;
+            border: 1px solid #fed7aa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #92400e;
+            font-size: 14px;
+            text-align: center;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🚨 Ultra-Compact Alert Test</h1>
+        <p><strong>NOW WITH EXACTLY YOUR DESIGN!</strong><br>
+        This version shows ONLY the header (title + subtitle + percentage) by default. All other components are hidden in the dropdown until you click "Analysis Details".</p>
+        
+        <div class="test-buttons">
+            <button class="test-btn high-danger" onclick="testHighDanger()">
+                🚨 Test High Danger Alert<br>
+                <small>(83% Phishing Risk)</small>
+            </button>
+            <button class="test-btn warning" onclick="testWarning()">
+                ⚠️ Test Warning Alert<br>
+                <small>(67% Phishing Risk)</small>
+            </button>
+            <button class="test-btn caution" onclick="testCaution()">
+                🟡 Test Caution Alert<br>
+                <small>(33% Phishing Risk)</small>
+            </button>
+            <button class="test-btn safe" onclick="testSafe()">
+                ✅ Test Safe Alert<br>
+                <small>(3% Phishing Risk)</small>
+            </button>
+            <button class="test-btn clear" onclick="clearAlerts()">
+                🗑️ Clear All Alerts
+            </button>
+        </div>
+
+        <div class="demo-note">
+            ⚡ <strong>INSTANT DEMO:</strong> Click any button above to see the new ultra-compact popup!
+        </div>
+
+        <div class="info-box">
+            <h3>✅ What Changed - Exactly Your Image Design:</h3>
+            
+            <div class="comparison">
+                <div class="comparison-item before">
+                    <h4>❌ Before (Old Design)</h4>
+                    <ul>
+                        <li>Large popup with all details visible</li>
+                        <li>Risk bars always shown</li>
+                        <li>Analysis reasons visible</li>
+                        <li>Took up lots of screen space</li>
+                        <li>Information overload</li>
+                    </ul>
+                </div>
+                <div class="comparison-item after">
+                    <h4>✅ After (Your Image Design)</h4>
+                    <ul>
+                        <li>Minimal header only (icon + title + subtitle)</li>
+                        <li>Prominent percentage badge</li>
+                        <li>Small close button</li>
+                        <li>Everything else in dropdown</li>
+                        <li>Clean, professional appearance</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="code-box">
+            <div class="highlight">// New Compact Usage:</div>
+            compactPhishingAlert.showPhishingAlert({
+                prediction: 'Phishing Email',
+                confidence: 0.83,
+                phishing_confidence: 0.83,
+                safe_confidence: 0.17,
+                reasons: ['Suspicious domain', 'Urgent language']
+            });
+            
+            <div class="highlight">// Quick test:</div>
+            compactPhishingAlert.testAlert();
+        </div>
+    </div>
+
+    <!-- Load the NEW ultra-compact alert -->
+    <script src="phishing-alert-compact.js"></script>
+    
+    <script>
+        function testHighDanger() {
+            const result = {
+                prediction: 'Phishing Email',
+                confidence: 0.83,
+                phishing_confidence: 0.83,
+                safe_confidence: 0.17,
+                reasons: [
+                    'Suspicious domain detected',
+                    'Urgent action language used',
+                    'Account threat mentioned',
+                    'Mismatched sender information',
+                    'Poor grammar detected'
+                ]
+            };
+            
+            compactPhishingAlert.showPhishingAlert(result);
+        }
+
+        function testWarning() {
+            const result = {
+                prediction: 'Phishing Email',
+                confidence: 0.67,
+                phishing_confidence: 0.67,
+                safe_confidence: 0.33,
+                reasons: [
+                    'Potentially suspicious sender domain',
+                    'Moderate risk language patterns',
+                    'Some phishing characteristics detected',
+                    'Email formatting irregularities'
+                ]
+            };
+            
+            compactPhishingAlert.showPhishingAlert(result);
+        }
+
+        function testCaution() {
+            const result = {
+                prediction: 'Safe Email',
+                confidence: 0.67,
+                phishing_confidence: 0.33,
+                safe_confidence: 0.67,
+                reasons: [
+                    'Minor suspicious elements identified',
+                    'Some characteristics require attention',
+                    'Generally safe but exercise caution'
+                ]
+            };
+            
+            compactPhishingAlert.showPhishingAlert(result);
+        }
+
+        function testSafe() {
+            const result = {
+                prediction: 'Safe Email',
+                confidence: 0.97,
+                phishing_confidence: 0.03,
+                safe_confidence: 0.97,
+                reasons: [
+                    'Email passes comprehensive security analysis',
+                    'Legitimate sender domain verified',
+                    'Professional email format',
+                    'No suspicious elements detected'
+                ]
+            };
+            
+            compactPhishingAlert.showPhishingAlert(result);
+        }
+
+        function clearAlerts() {
+            document.querySelectorAll('.compact-phishing-alert').forEach(el => el.remove());
+        }
+
+        // Auto-show demo on load
+        setTimeout(() => {
+            console.log('🚨 ULTRA-COMPACT PHISHING ALERT READY!');
+            console.log('📝 Test manually: compactPhishingAlert.testAlert()');
+            console.log('🎯 This version matches your image EXACTLY!');
+        }, 500);
+    </script>
+</body>
+</html>

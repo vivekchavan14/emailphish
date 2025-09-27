@@ -23,15 +23,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Handle email analysis with caching
 async function handleEmailAnalysis(emailContent, sendResponse) {
+  console.log('🔍 Background: Starting email analysis...');
+  
   try {
     const contentHash = hashString(emailContent);
     
     // Check cache first
     const cached = predictionCache.get(contentHash);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log('💾 Background: Using cached result');
       sendResponse(cached.result);
       return;
     }
+    
+    console.log('🌐 Background: Making API call to', API_URL);
     
     // Make API call
     const response = await fetch(API_URL, {
@@ -42,11 +47,14 @@ async function handleEmailAnalysis(emailContent, sendResponse) {
       body: JSON.stringify({ email: emailContent }),
     });
     
+    console.log('📡 Background: API response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
     const result = await response.json();
+    console.log('✅ Background: Analysis successful:', result.prediction);
     
     // Cache the result
     predictionCache.set(contentHash, {
@@ -60,13 +68,28 @@ async function handleEmailAnalysis(emailContent, sendResponse) {
     sendResponse(result);
     
   } catch (error) {
-    console.error('Error analyzing email:', error);
-    sendResponse({
+    console.error('🚨 Background: Error analyzing email:', error);
+    
+    let errorMessage = 'Failed to analyze email';
+    if (error.message.includes('Failed to fetch')) {
+      errorMessage = 'Cannot connect to backend server. Please ensure it is running on http://127.0.0.1:8000';
+    } else if (error.message.includes('HTTP 5')) {
+      errorMessage = 'Backend server error. Please check server logs';
+    } else if (error.message.includes('HTTP 4')) {
+      errorMessage = 'Bad request to backend server';
+    }
+    
+    const errorResult = {
       error: true,
-      message: 'Failed to analyze email. Please check if the backend server is running.',
+      message: errorMessage,
       prediction: 'Unknown',
-      confidence: 0
-    });
+      confidence: 0,
+      phishing_confidence: 0,
+      safe_confidence: 0,
+      reasons: ['Analysis failed due to technical error']
+    };
+    
+    sendResponse(errorResult);
   }
 }
 

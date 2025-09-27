@@ -334,4 +334,13 @@ async def model_info():
 # Start server when running this file directly
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    
+    # Get port from environment variable (for Render deployment) or default to 8000
+    port = int(os.environ.get("PORT", 8000))
+    
+    # Use 0.0.0.0 for production deployment, 127.0.0.1 for local development
+    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
+    
+    print(f"Starting server on {host}:{port}")
+    uvicorn.run("app:app", host=host, port=port, reload=False)

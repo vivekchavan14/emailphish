@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: phishmail-guard-backend
+    env: python
+    repo: https://github.com/vaishnaviiii4/mailphishing_detection.git
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "cd backend && python app.py"
+    plan: free
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.4"
+    healthCheckPath: /

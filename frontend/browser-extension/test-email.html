@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Email Content</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .email-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .email-header {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .email-content {
+            line-height: 1.6;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PhishMail Guard Extension Test Page</h1>
+    
+    <div class="email-container" data-message-id="test-email-1">
+        <div class="email-header">
+            <strong>From:</strong> security@paypal-verification.com<br>
+            <strong>Subject:</strong> Urgent: Verify Your Account Now
+        </div>
+        <div class="email-content">
+            <div class="a3s aiL">
+                Dear Customer,
+                
+                Your PayPal account has been temporarily restricted due to suspicious activity. 
+                To restore full access to your account, you must verify your identity immediately.
+                
+                Click here to verify your account: http://paypal-secure-verify.suspicious-domain.com/verify
+                
+                Failure to verify within 24 hours will result in permanent account closure.
+                
+                Warning: Do not share this email with anyone. This is a confidential security matter.
+                
+                Best regards,
+                PayPal Security Team
+            </div>
+        </div>
+    </div>
+
+    <div class="email-container" data-message-id="test-email-2">
+        <div class="email-header">
+            <strong>From:</strong> noreply@github.com<br>
+            <strong>Subject:</strong> Welcome to GitHub!
+        </div>
+        <div class="email-content">
+            <div class="a3s aiL">
+                Hi there,
+
+                Welcome to GitHub! We're excited to have you as part of our developer community.
+
+                Here are some helpful links to get you started:
+                • Create your first repository
+                • Explore trending repositories
+                • Follow interesting developers
+                • Read our getting started guide
+
+                If you have any questions, feel free to contact our support team.
+
+                Happy coding!
+                The GitHub Team
+            </div>
+        </div>
+    </div>
+
+    <div class="email-container" data-convid="outlook-test-1">
+        <div class="email-header">
+            <strong>From:</strong> admin@microsoft-security.net<br>
+            <strong>Subject:</strong> Microsoft Security Alert - Action Required
+        </div>
+        <div class="email-content">
+            <div data-automation-id="messageBody">
+                SECURITY ALERT: Unauthorized access detected on your Microsoft account.
+
+                Someone from an unrecognized device tried to sign into your account.
+                Location: Unknown
+                Device: Suspicious Browser
+                
+                If this was you, you can ignore this email. If not, please secure your account immediately.
+
+                Secure Your Account: http://microsoft-security-urgent.malicious-site.net/secure
+
+                This link will expire in 2 hours for your security.
+                
+                Microsoft Security Team
+            </div>
+        </div>
+    </div>
+
+    <button onclick="testExtension()">Test Extension Manually</button>
+    <button onclick="simulateEmailLoad()">Simulate New Email Load</button>
+
+    <script>
+        function testExtension() {
+            console.log('Testing PhishMail Guard Extension...');
+            
+            // Check if the extension content script is loaded
+            if (window.phishGuard) {
+                console.log('Extension found! Triggering manual scan...');
+                window.phishGuard.scanExistingEmails();
+            } else {
+                console.log('Extension not detected. Checking for PhishMailGuard class...');
+                
+                // Try to access the content script functionality
+                const emails = document.querySelectorAll('[data-message-id], [data-convid], [data-automation-id="messageBody"]');
+                console.log(`Found ${emails.length} test emails on page`);
+                
+                emails.forEach((email, index) => {
+                    console.log(`Email ${index + 1}:`, email.textContent.substring(0, 100) + '...');
+                });
+            }
+        }
+
+        function simulateEmailLoad() {
+            console.log('Simulating new email load...');
+            
+            // Create a new email element dynamically
+            const newEmail = document.createElement('div');
+            newEmail.className = 'email-container';
+            newEmail.setAttribute('data-message-id', 'dynamic-test-' + Date.now());
+            
+            newEmail.innerHTML = `
+                <div class="email-header">
+                    <strong>From:</strong> urgent-response@bank-security.com<br>
+                    <strong>Subject:</strong> URGENT: Confirm Your Bank Details
+                </div>
+                <div class="email-content">
+                    <div class="a3s aiL">
+                        URGENT SECURITY NOTICE
+                        
+                        Your bank account will be closed unless you verify your details within 1 hour.
+                        
+                        Someone attempted to access your account from:
+                        IP: 192.168.1.1
+                        Location: Unknown Country
+                        
+                        Verify your account immediately: http://bank-verify-urgent-security.bad-domain.com/verify-now
+                        
+                        Account Number: Enter your full account number
+                        Social Security: Enter your full SSN
+                        Password: Enter your online banking password
+                        
+                        This is an automated security system. Do not ignore this warning.
+                        
+                        Security Department
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(newEmail);
+            console.log('New email added to page');
+        }
+
+        // Log when page loads
+        console.log('PhishMail Guard test page loaded');
+        console.log('Available email selectors:', document.querySelectorAll('[data-message-id], [data-convid], [data-automation-id]').length);
+        
+        // Check for extension after short delay
+        setTimeout(() => {
+            console.log('Checking for extension after page load...');
+            testExtension();
+        }, 2000);
+    </script>
+</body>
+</html>

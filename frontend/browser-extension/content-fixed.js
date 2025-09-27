@@ -38,9 +38,9 @@ class PhishMailGuard {
   async waitForAlertUI() {
     return new Promise((resolve) => {
       const checkForUI = () => {
-        if (window.fixedPhishingAlert) {
-          this.alertUI = window.fixedPhishingAlert;
-          console.log('✅ Fixed Popup Alert UI system loaded');
+        if (window.phishingAlertUI) {
+          this.alertUI = window.phishingAlertUI;
+          console.log('✅ Alert UI system loaded');
           resolve();
         } else {
           setTimeout(checkForUI, 100);
@@ -240,10 +240,10 @@ class PhishMailGuard {
     emailElement.setAttribute('data-phishguard-result', JSON.stringify(result));
     emailElement.setAttribute('data-phishguard-analyzed', 'true');
     
-    // Show alert using fixed popup system
+    // Show alert using new UI system
     if (this.alertUI && this.showNotifications) {
-      console.log('🎨 Showing fixed popup alert with working dropdown...');
-      this.alertUI.showFixedAlert(result, emailElement);
+      console.log('🎨 Showing advanced phishing alert...');
+      this.alertUI.showPhishingAlert(result, emailElement);
     } else if (this.showNotifications) {
       console.log('🔔 Showing fallback notification...');
       this.showBasicNotification(result);
@@ -386,7 +386,7 @@ class PhishMailGuard {
     }
     
     // Clean up UI elements
-    document.querySelectorAll('.phishguard-alert-card, .phishing-alert-card, .complete-phishing-alert, .fixed-phishing-alert').forEach(el => {
+    document.querySelectorAll('.phishguard-alert-card, .phishing-alert-card').forEach(el => {
       el.remove();
     });
   }

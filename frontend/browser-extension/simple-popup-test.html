@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Popup Test</title>
+    <style>
+        body { font-family: Arial; padding: 50px; background: #f0f0f0; }
+        button { padding: 15px 30px; font-size: 18px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .test-popup { position: fixed; top: 20px; right: 20px; background: #ff4444; color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 9999999; max-width: 300px; }
+    </style>
+</head>
+<body>
+    <h1>Simple Popup Test</h1>
+    <p>Click the button below to test if popups work in your browser:</p>
+    
+    <button onclick="showSimplePopup()">Test Simple Popup</button>
+    <button onclick="showAdvancedPopup()">Test Advanced Popup</button>
+    <button onclick="testBrowserAlert()">Test Browser Alert</button>
+    <button onclick="clearPopups()">Clear All Popups</button>
+    
+    <div id="status" style="margin-top: 30px; padding: 20px; background: white; border-radius: 5px;"></div>
+
+    <script>
+        function log(message) {
+            document.getElementById('status').innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+        
+        function showSimplePopup() {
+            log('Creating simple popup...');
+            
+            const popup = document.createElement('div');
+            popup.className = 'test-popup';
+            popup.innerHTML = `
+                <h3>Test Popup Works!</h3>
+                <p>If you can see this, popups are working!</p>
+                <button onclick="this.parentElement.remove()" style="background: white; color: #ff4444; border: 1px solid #ff4444; padding: 5px 10px; border-radius: 3px;">Close</button>
+            `;
+            
+            document.body.appendChild(popup);
+            log('Simple popup created successfully!');
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (popup.parentNode) popup.remove();
+            }, 5000);
+        }
+        
+        function showAdvancedPopup() {
+            log('Testing advanced popup system...');
+            
+            if (typeof window.phishingAlertUI !== 'undefined') {
+                const testResult = {
+                    prediction: 'Phishing Email',
+                    confidence: 0.85,
+                    phishing_confidence: 0.85,
+                    safe_confidence: 0.15,
+                    reasons: ['This is just a test', 'No real email was analyzed']
+                };
+                window.phishingAlertUI.showPhishingAlert(testResult);
+                log('Advanced popup triggered!');
+            } else {
+                log('Advanced popup system not loaded. Loading...');
+                
+                // Try to load the alert UI
+                const script = document.createElement('script');
+                script.src = 'phishing-alert-ui.js';
+                script.onload = () => {
+                    log('Alert UI loaded! Try the advanced popup button again.');
+                };
+                script.onerror = () => {
+                    log('ERROR: Could not load phishing-alert-ui.js');
+                };
+                document.head.appendChild(script);
+            }
+        }
+        
+        function testBrowserAlert() {
+            log('Testing browser alert...');
+            alert('Browser alert works! This means JavaScript is working properly.');
+            log('Browser alert test completed.');
+        }
+        
+        function clearPopups() {
+            log('Clearing all popups...');
+            document.querySelectorAll('.test-popup, .phishing-alert-card').forEach(el => el.remove());
+            log('All popups cleared.');
+        }
+        
+        // Initialize
+        log('Simple popup test page loaded successfully!');
+        log('Click the buttons above to test different popup methods.');
+    </script>
+</body>
+</html>

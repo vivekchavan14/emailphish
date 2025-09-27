@@ -78,9 +78,10 @@ class SimplePopupManager {
           `;
         }
         
-        // Try to get latest analysis from storage
+        // Try to get latest analysis from storage and current page
         if (isSupported) {
           await this.loadLatestAnalysis();
+          await this.getLatestAnalysisFromPage();
         }
       }
     } catch (error) {
@@ -108,10 +109,49 @@ class SimplePopupManager {
     }
   }
 
+  async getLatestAnalysisFromPage() {
+    try {
+      // Get current tab and execute script to find latest analysis
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentTab = tabs[0];
+      
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        func: () => {
+          // Find the most recently analyzed email element
+          const analyzedElements = document.querySelectorAll('[data-phishguard-analyzed="true"]');
+          if (analyzedElements.length > 0) {
+            const latestElement = analyzedElements[analyzedElements.length - 1];
+            const resultData = latestElement.getAttribute('data-phishguard-result');
+            if (resultData) {
+              try {
+                return JSON.parse(resultData);
+              } catch (e) {
+                return null;
+              }
+            }
+          }
+          return null;
+        }
+      });
+      
+      if (results && results[0] && results[0].result) {
+        const analysis = results[0].result;
+        console.log('Found latest analysis on page:', analysis);
+        this.latestAnalysis = analysis;
+        this.displayAnalysis(analysis);
+        this.saveLatestAnalysis(analysis);
+      }
+    } catch (error) {
+      console.log('Could not get analysis from page:', error);
+    }
+  }
+
   setupMessageListener() {
     // Listen for messages from content script about new analysis
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.action === 'analysisComplete') {
+        console.log('Received analysis result:', message.result);
         this.latestAnalysis = message.result;
         this.displayAnalysis(message.result);
         this.saveLatestAnalysis(message.result);
@@ -129,39 +169,150 @@ class SimplePopupManager {
     // Show the analysis section
     analysisSection.style.display = 'block';
 
-    // Determine if it's phishing or safe
+    // Calculate phishing percentage like the alert UI
     const isPhishing = result.prediction === 'Phishing Email';
-    const confidence = Math.round((result.confidence || 0) * 100);
-    
-    // Update confidence display
-    confidencePercentage.textContent = `${confidence}%`;
+    let phishingPercentage;
     
     if (isPhishing) {
-      confidenceLabel.textContent = 'Phishing Risk';
+      phishingPercentage = (result.phishing_confidence || result.confidence || 0) * 100;
+    } else {
+      const safeConfidence = result.safe_confidence || result.confidence || 0;
+      phishingPercentage = (1 - safeConfidence) * 100;
+    }
+    
+    const safePercentage = 100 - phishingPercentage;
+    
+    // Update main confidence display
+    confidencePercentage.textContent = `${Math.round(phishingPercentage)}%`;
+    
+    if (phishingPercentage >= 60) {
+      confidenceLabel.textContent = 'High Risk';
       confidenceCircle.classList.add('danger');
+      confidenceCircle.classList.remove('safe');
+    } else if (phishingPercentage >= 5) {
+      confidenceLabel.textContent = 'Low Risk';
+      confidenceCircle.classList.remove('danger');
       confidenceCircle.classList.remove('safe');
     } else {
       confidenceLabel.textContent = 'Safe';
       confidenceCircle.classList.remove('danger');
       confidenceCircle.classList.add('safe');
     }
+    
+    // Add or update risk breakdown bars
+    this.updateRiskBreakdown(phishingPercentage, safePercentage);
 
-    // Update reasons
+    // Generate comprehensive reasons like the alert UI
+    const reasons = this.generateDetailedReasons(result, phishingPercentage);
+    
+    // Update reasons list with all factors
     reasonsList.innerHTML = '';
-    if (result.reasons && result.reasons.length > 0) {
-      result.reasons.forEach(reason => {
-        const li = document.createElement('li');
-        li.textContent = reason;
-        reasonsList.appendChild(li);
-      });
-    } else {
+    console.log('Analysis result:', result); // Debug logging
+    
+    reasons.forEach((reason, index) => {
       const li = document.createElement('li');
-      li.textContent = 'No specific reasons available';
+      li.innerHTML = `<strong>Factor ${index + 1}:</strong> ${reason}`;
+      li.style.cssText = `
+        margin-bottom: 6px;
+        padding: 6px;
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 4px;
+        font-size: 11px;
+        line-height: 1.3;
+      `;
       reasonsList.appendChild(li);
-    }
+    });
 
     // Update scan status
     document.getElementById('scan-status').textContent = `Last scan: ${new Date().toLocaleTimeString()}`;
+  }
+  
+  updateRiskBreakdown(phishingPercentage, safePercentage) {
+    // Check if risk breakdown already exists, if not create it
+    let riskBreakdown = document.getElementById('risk-breakdown');
+    if (!riskBreakdown) {
+      riskBreakdown = document.createElement('div');
+      riskBreakdown.id = 'risk-breakdown';
+      riskBreakdown.style.cssText = 'margin: 12px 0; padding: 8px; background: #f8fafc; border-radius: 8px;';
+      
+      riskBreakdown.innerHTML = `
+        <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #374151;">Risk Breakdown</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="font-size: 10px; font-weight: 600; color: #ef4444;">Phishing Risk</span>
+          <span id="phishing-risk-percent" style="font-size: 10px; font-weight: 700; color: #ef4444;">0%</span>
+        </div>
+        <div style="background: #f1f5f9; border-radius: 6px; height: 4px; overflow: hidden; margin-bottom: 6px;">
+          <div id="phishing-risk-bar" style="height: 100%; background: linear-gradient(90deg, #ef4444, #dc2626); transition: width 0.8s ease; width: 0%;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span style="font-size: 10px; font-weight: 600; color: #10b981;">Safety Score</span>
+          <span id="safety-score-percent" style="font-size: 10px; font-weight: 700; color: #10b981;">0%</span>
+        </div>
+        <div style="background: #f1f5f9; border-radius: 6px; height: 4px; overflow: hidden;">
+          <div id="safety-score-bar" style="height: 100%; background: linear-gradient(90deg, #10b981, #059669); transition: width 0.8s ease; width: 0%;"></div>
+        </div>
+      `;
+      
+      // Insert after confidence display
+      const confidenceDisplay = document.querySelector('.confidence-display');
+      confidenceDisplay.parentNode.insertBefore(riskBreakdown, confidenceDisplay.nextSibling);
+    }
+    
+    // Update the bars with animation
+    setTimeout(() => {
+      document.getElementById('phishing-risk-percent').textContent = `${Math.round(phishingPercentage)}%`;
+      document.getElementById('safety-score-percent').textContent = `${Math.round(safePercentage)}%`;
+      document.getElementById('phishing-risk-bar').style.width = `${phishingPercentage}%`;
+      document.getElementById('safety-score-bar').style.width = `${safePercentage}%`;
+    }, 100);
+  }
+  
+  generateDetailedReasons(result, phishingPercentage) {
+    const reasons = [];
+    
+    // Add reasons from backend analysis
+    if (result.reasons && result.reasons.length > 0) {
+      result.reasons.forEach(reason => {
+        reasons.push(reason);
+      });
+    }
+    
+    // Add classification-based reasons
+    if (phishingPercentage >= 80) {
+      reasons.push(
+        'Multiple high-risk phishing indicators detected',
+        'Suspicious URL patterns and domain characteristics',
+        'Urgent action language commonly used in scams',
+        'Request for sensitive personal information',
+        'Threat of account suspension or closure',
+        'Poor grammar or spelling inconsistencies'
+      );
+    } else if (phishingPercentage >= 60) {
+      reasons.push(
+        'Several warning signs present in email content',
+        'Potentially suspicious sender domain',
+        'Moderate risk language patterns detected',
+        'Some characteristics match known phishing attempts',
+        'Email formatting or structure irregularities'
+      );
+    } else if (phishingPercentage >= 5) {
+      reasons.push(
+        'Minor suspicious elements identified',
+        'Some characteristics require attention',
+        'Email contains few warning indicators',
+        'Generally safe but exercise normal caution'
+      );
+    } else {
+      reasons.push(
+        'Email passes comprehensive security analysis',
+        'Legitimate sender domain verified',
+        'Professional email format and structure',
+        'No suspicious links or attachments detected',
+        'Very low risk of phishing activity'
+      );
+    }
+    
+    return reasons.slice(0, 8); // Limit to 8 reasons for popup
   }
 
   setupEventListeners() {

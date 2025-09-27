@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WORKING DROPDOWN TEST</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f4f8;
+        }
+
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            margin: 0 auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .test-btn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+
+        /* EXACT POPUP DESIGN */
+        .exact-popup {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999999;
+            width: 300px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            font-family: inherit;
+            overflow: hidden;
+            border-left: 6px solid #dc2626;
+        }
+
+        .exact-header {
+            padding: 16px 18px;
+            background: linear-gradient(135deg, #fef2f2, #fee2e2);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .exact-header:hover {
+            background: linear-gradient(135deg, #fef2f2, #fecaca);
+        }
+
+        .exact-header-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .exact-icon {
+            font-size: 18px;
+            animation: pulse 2s infinite;
+        }
+
+        .exact-content {
+            flex: 1;
+        }
+
+        .exact-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #dc2626;
+            margin: 0 0 3px 0;
+        }
+
+        .exact-subtitle {
+            font-size: 12px;
+            font-weight: 500;
+            color: #7c2d12;
+            margin: 0 0 8px 0;
+        }
+
+        .exact-percentage {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 14px;
+            color: white;
+            background: #dc2626;
+        }
+
+        .exact-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.1);
+            border: none;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        /* DROPDOWN SECTION */
+        .exact-dropdown {
+            background: white;
+            border-top: 1px solid rgba(0,0,0,0.08);
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .exact-dropdown.show {
+            max-height: 500px;
+        }
+
+        .risk-assessment {
+            padding: 16px;
+            background: #fff7ed;
+            border-left: 4px solid #f97316;
+            margin: 16px;
+            border-radius: 8px;
+        }
+
+        .risk-assessment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .risk-yellow-dot {
+            width: 12px;
+            height: 12px;
+            background: #fbbf24;
+            border-radius: 50%;
+        }
+
+        .risk-assessment-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #f97316;
+        }
+
+        .risk-assessment-text {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #7c2d12;
+        }
+
+        .risk-bars-section {
+            padding: 0 16px 16px 16px;
+        }
+
+        .risk-bars {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .risk-bar {
+            text-align: center;
+        }
+
+        .risk-bar-label {
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .risk-bar-container {
+            background: #f1f5f9;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .risk-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s ease;
+        }
+
+        .risk-bar-fill.phishing {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        .risk-bar-fill.safety {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .risk-bar-value {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .analysis-section {
+            padding: 0 16px 16px 16px;
+        }
+
+        .analysis-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .analysis-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #f97316;
+        }
+
+        .analysis-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .analysis-bullet {
+            width: 6px;
+            height: 6px;
+            background: #f97316;
+            border-radius: 50%;
+            margin-top: 6px;
+            flex-shrink: 0;
+        }
+
+        .analysis-text {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #7c2d12;
+            font-weight: 500;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🚨 WORKING DROPDOWN TEST</h1>
+        <p><strong>This shows your EXACT image design with working dropdown!</strong></p>
+        
+        <button class="test-btn" onclick="showWorkingPopup()">
+            SHOW POPUP WITH DROPDOWN
+        </button>
+        
+        <button class="test-btn" onclick="hidePopup()" style="background: #6b7280;">
+            HIDE POPUP
+        </button>
+        
+        <div style="background: #dcfce7; border: 1px solid #bbf7d0; padding: 15px; border-radius: 8px; margin-top: 20px; color: #166534;">
+            <strong>✅ Instructions:</strong><br>
+            1. Click "SHOW POPUP WITH DROPDOWN"<br>
+            2. You'll see the popup in top-right corner (like your image)<br>
+            3. <strong>Click anywhere on the popup header</strong> to show dropdown<br>
+            4. You'll see all the components from your image!
+        </div>
+    </div>
+
+    <script>
+        function showWorkingPopup() {
+            // Remove existing
+            hidePopup();
+            
+            // Create popup
+            const popup = document.createElement('div');
+            popup.className = 'exact-popup';
+            popup.id = 'workingPopup';
+            
+            popup.innerHTML = `
+                <div class="exact-header" onclick="toggleDropdown()">
+                    <div class="exact-header-content">
+                        <div class="exact-icon">🚨</div>
+                        <div class="exact-content">
+                            <div class="exact-title">PHISHING – HIGH DANGER</div>
+                            <div class="exact-subtitle">Immediate Action Required</div>
+                            <div class="exact-percentage">83.0% Phishing Risk</div>
+                        </div>
+                    </div>
+                    <button class="exact-close" onclick="event.stopPropagation(); hidePopup();">×</button>
+                </div>
+                
+                <div class="exact-dropdown" id="dropdown">
+                    <!-- Risk Assessment Section -->
+                    <div class="risk-assessment">
+                        <div class="risk-assessment-header">
+                            <div class="risk-yellow-dot"></div>
+                            <div class="risk-assessment-title">Risk Assessment: STAY ALERT:</div>
+                        </div>
+                        <div class="risk-assessment-text">
+                            While the overall risk is moderate, some elements require attention. Double-check the sender identity and be cautious with any links or downloads.
+                        </div>
+                    </div>
+                    
+                    <!-- Risk Bars Section -->
+                    <div class="risk-bars-section">
+                        <div class="risk-bars">
+                            <div class="risk-bar">
+                                <div class="risk-bar-label" style="color: #ef4444;">PHISHING RISK</div>
+                                <div class="risk-bar-container">
+                                    <div class="risk-bar-fill phishing" style="width: 33.1%;"></div>
+                                </div>
+                                <div class="risk-bar-value" style="color: #ef4444;">33.1%</div>
+                            </div>
+                            <div class="risk-bar">
+                                <div class="risk-bar-label" style="color: #10b981;">SAFETY SCORE</div>
+                                <div class="risk-bar-container">
+                                    <div class="risk-bar-fill safety" style="width: 66.9%;"></div>
+                                </div>
+                                <div class="risk-bar-value" style="color: #10b981;">66.9%</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Analysis Details Section -->
+                    <div class="analysis-section">
+                        <div class="analysis-header">
+                            <div style="font-size: 16px;">🔍</div>
+                            <div class="analysis-title">Analysis Details (6 factors)</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Uses 1 urgent/phishing language patterns</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Minor suspicious elements identified</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Some characteristics require attention</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Email formatting irregularities detected</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Moderate risk language patterns found</div>
+                        </div>
+                        
+                        <div class="analysis-item">
+                            <div class="analysis-bullet"></div>
+                            <div class="analysis-text">Generally safe but exercise normal caution</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(popup);
+            
+            console.log('🎯 WORKING POPUP WITH DROPDOWN SHOWN!');
+            console.log('👆 Click the popup header to show/hide dropdown!');
+        }
+        
+        function hidePopup() {
+            const popup = document.getElementById('workingPopup');
+            if (popup) {
+                popup.remove();
+            }
+        }
+        
+        function toggleDropdown() {
+            const dropdown = document.getElementById('dropdown');
+            dropdown.classList.toggle('show');
+            
+            if (dropdown.classList.contains('show')) {
+                console.log('✅ Dropdown opened - showing all components!');
+            } else {
+                console.log('📦 Dropdown closed - back to minimal view');
+            }
+        }
+        
+        // Auto-show popup after 1 second
+        setTimeout(() => {
+            showWorkingPopup();
+        }, 1000);
+    </script>
+</body>
+</html>
