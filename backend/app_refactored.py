@@ -41,25 +41,7 @@ SUSPICIOUS_TLDS = {
     '.click', '.download', '.loan', '.work', '.men', '.date', '.racing'
 }
 
-# Known high-profile legitimate domains (core set for instant recognition)
-CORE_LEGITIMATE_DOMAINS = {
-    # Major tech companies
-    'google.com', 'microsoft.com', 'apple.com', 'amazon.com', 'facebook.com', 'meta.com',
-    'netflix.com', 'github.com', 'stackoverflow.com', 'wikipedia.org', 
-    
-    # AI companies  
-    'openai.com', 'anthropic.com', 'claude.ai', 'chatgpt.com',
-    
-    # Google services
-    'gmail.com', 'googleplay.com', 'youtube.com', 'googlepay.com',
-    
-    # Social media
-    'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'whatsapp.com',
-    
-    # Other major services
-    'paypal.com', 'stripe.com', 'slack.com', 'zoom.us', 'dropbox.com', 'adobe.com',
-    'spotify.com', 'reddit.com', 'twitch.tv', 'discord.com'
-}
+# Dynamic legitimacy detection without static lists
 
 # Context-aware legitimate terms that should NOT be flagged
 LEGITIMATE_BUSINESS_TERMS = {
@@ -104,11 +86,15 @@ SUSPICIOUS_URL_PATTERNS = [
 
 def extract_domain_from_email(email_text: str) -> List[str]:
     """Extract domains from email content"""
-    # Look for From: headers and email domains
+    # Look for From: headers, email domains, URLs, and plain domain mentions
     domain_patterns = [
         r'from[:\s]+[^@\s]*@([^\s<>\[\]]+)',  # From header
         r'@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # Any email domain
         r'https?://(?:www\.)?([^/\s<>\[\]]+)',  # URL domains
+        r'\b([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b',  # Plain domain mentions (like Claude.ai)
+        r'visit\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "visit domain.com"
+        r'go\s+to\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "go to domain.com"
+        r'log\s+in(?:to)?\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "log in to domain.com"
     ]
     
     domains = set()
@@ -117,15 +103,20 @@ def extract_domain_from_email(email_text: str) -> List[str]:
     for pattern in domain_patterns:
         matches = re.findall(pattern, email_lower, re.IGNORECASE)
         for match in matches:
-            domain = match.strip('.,;')
-            if '.' in domain and len(domain) > 3:
+            domain = match.strip('.,;!?')
+            # Filter out obvious non-domains
+            if ('.' in domain and 
+                len(domain) > 3 and 
+                not domain.startswith('.') and 
+                not domain.endswith('.') and
+                not re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', domain)):  # Skip IP addresses for now
                 domains.add(domain)
     
     return list(domains)
 
 def calculate_domain_legitimacy_score(domain: str) -> Tuple[float, List[str]]:
-    """Calculate a legitimacy score for a domain based on multiple factors"""
-    score = 0.0
+    """Calculate a legitimacy score for a domain based on multiple dynamic factors"""
+    score = 4.0  # Start with slightly positive bias for legitimate detection
     reasons = []
     
     if not domain or '.' not in domain:
@@ -133,67 +124,112 @@ def calculate_domain_legitimacy_score(domain: str) -> Tuple[float, List[str]]:
     
     domain_lower = domain.lower()
     
-    # 1. Check core legitimate domains
-    if domain_lower in CORE_LEGITIMATE_DOMAINS:
-        score += 8.0
-        reasons.append(f"Known legitimate domain: {domain}")
-        return min(score, 10.0), reasons
-    
-    # Check if subdomain of core legitimate domain
-    for legit_domain in CORE_LEGITIMATE_DOMAINS:
-        if domain_lower.endswith('.' + legit_domain) or domain_lower == legit_domain:
-            score += 7.0
-            reasons.append(f"Subdomain of known legitimate domain: {legit_domain}")
-            return min(score, 10.0), reasons
-    
-    # 2. TLD analysis
+    # 1. TLD analysis (trust indicators)
     domain_parts = domain_lower.split('.')
     if len(domain_parts) >= 2:
         tld = '.' + '.'.join(domain_parts[-2:]) if len(domain_parts) >= 3 and domain_parts[-2] in ['co', 'com', 'org'] else '.' + domain_parts[-1]
         
+        # Highly suspicious TLDs
         if tld in SUSPICIOUS_TLDS:
             score -= 3.0
             reasons.append(f"Suspicious TLD: {tld}")
+        # High-trust TLDs
+        elif tld in ['.edu', '.gov', '.mil']:
+            score += 3.0
+            reasons.append(f"High-trust institutional TLD: {tld}")
+        # Standard business TLDs
         elif tld in LEGITIMATE_TLDS:
             score += 1.0
-            reasons.append(f"Legitimate TLD: {tld}")
+            reasons.append(f"Standard business TLD: {tld}")
     
-    # 3. Domain length and structure analysis
+    # 2. Domain structure analysis
     main_domain = domain_parts[-2] if len(domain_parts) >= 2 else domain_parts[0]
     
-    # Reasonable domain length
-    if 3 <= len(main_domain) <= 20:
-        score += 1.0
-        reasons.append("Reasonable domain length")
-    elif len(main_domain) > 30:
+    # Professional domain length (not too short, not too long)
+    if 4 <= len(main_domain) <= 15:
+        score += 1.5
+        reasons.append("Professional domain length")
+    elif len(main_domain) > 25:
         score -= 2.0
         reasons.append("Unusually long domain name")
+    elif len(main_domain) <= 3:
+        score -= 1.0
+        reasons.append("Very short domain name")
     
-    # 4. Check for suspicious patterns
+    # 3. Legitimate business subdomain patterns
+    legitimate_subdomain_patterns = [
+        r'^(noreply|no-reply)\.',
+        r'^(support|help|customer)\.',
+        r'^(notifications?|alerts?)\.',
+        r'^(mail|email)\.',
+        r'^(news|updates?|newsletter)\.',
+        r'^(accounts?|login|auth)\.',
+        r'^(api|app|mobile)\.',
+        r'^(www|web)\.',
+        r'^(secure|safe)\.',
+        r'^(marketing|promo)\.',
+    ]
+    
+    for pattern in legitimate_subdomain_patterns:
+        if re.search(pattern, domain_lower):
+            score += 2.0
+            reasons.append("Legitimate business communication subdomain")
+            break
+    
+    # 4. Professional domain structure
+    if re.search(r'^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]\.[a-zA-Z]{2,}$', domain_lower):
+        score += 1.0
+        reasons.append("Professional domain structure")
+    
+    # 5. Check for suspicious phishing patterns
     suspicious_patterns = [
         r'\d{3,}',  # Many consecutive digits
-        r'[0-9]+[a-z]+[0-9]+',  # Alternating numbers and letters
-        r'(secure|verify|account|login|update)-',  # Suspicious prefixes
-        r'-(secure|verify|account|login|update)',  # Suspicious suffixes
+        r'^\d+[a-z]+\d+$',  # Alternating numbers and letters pattern
+        r'(secure|verify|account|login|update|confirm)-[^.]*$',  # Suspicious prefixes
+        r'-?(secure|verify|account|login|update|confirm)$',  # Suspicious suffixes
+        r'[0-9]+\.',  # Starts with numbers
     ]
     
     for pattern in suspicious_patterns:
         if re.search(pattern, main_domain):
             score -= 2.0
-            reasons.append(f"Suspicious domain pattern detected")
+            reasons.append("Suspicious domain pattern detected")
             break
     
-    # 5. Check for brand impersonation attempts
-    brand_keywords = ['google', 'microsoft', 'apple', 'amazon', 'facebook', 'netflix', 'paypal']
-    for brand in brand_keywords:
-        if brand in main_domain and not domain_lower.endswith(brand + '.com'):
-            score -= 3.0
-            reasons.append(f"Possible brand impersonation: {brand}")
+    # 6. Domain age indicators (heuristics)
+    # Professional domains tend to have certain characteristics
+    if re.search(r'^[a-z]{3,12}\.(com|org|net)$', domain_lower):  # Clean, simple domains
+        score += 1.0
+        reasons.append("Clean, established domain pattern")
     
-    # 6. Professional email patterns
-    if re.search(r'^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]\.[a-zA-Z]{2,}$', domain_lower):
-        score += 0.5
-        reasons.append("Professional domain structure")
+    # 7. Check for common business terms and service indicators (positive indicators)
+    business_terms = ['corp', 'inc', 'ltd', 'company', 'group', 'team', 'studio', 'tech', 'digital', 'online', 
+                     'service', 'services', 'app', 'apps', 'cloud', 'net', 'web', 'media', 'solutions',
+                     'platform', 'systems', 'software', 'ai', 'labs', 'hub', 'center', 'store', 'shop']
+    for term in business_terms:
+        if term in main_domain:
+            score += 1.0  # Increased from 0.5
+            reasons.append(f"Contains business term: {term}")
+            break
+    
+    # 8. Look for common legitimate service patterns
+    service_patterns = [
+        r'play\.', r'drive\.', r'docs\.', r'accounts?\.', r'auth\.', r'login\.',  # Service subdomains
+        r'cdn\.', r'static\.', r'assets?\.',  # CDN patterns
+        r'blog\.', r'news\.', r'help\.', r'support\.',  # Content subdomains
+        r'api\.', r'app\.', r'mobile\.',  # API/app subdomains
+    ]
+    
+    for pattern in service_patterns:
+        if re.search(pattern, domain_lower):
+            score += 1.5
+            reasons.append("Common service subdomain pattern")
+            break
+    
+    # 8. Penalize IP addresses
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', domain):
+        score -= 5.0
+        reasons.append("IP address instead of domain name")
     
     return min(max(score, 0.0), 10.0), reasons
 
@@ -215,8 +251,8 @@ def is_legitimate_sender(email_text: str) -> Tuple[bool, str]:
             best_reasons = reasons
             best_domain = domain
     
-    # Consider legitimate if score is above threshold
-    is_legitimate = max_score >= 5.0
+    # Consider legitimate if score is above threshold (lowered for better coverage)
+    is_legitimate = max_score >= 4.0
     
     reason = f"Domain: {best_domain}, Score: {max_score:.1f}/10, Reasons: {'; '.join(best_reasons)}"
     
@@ -246,7 +282,7 @@ def extract_enhanced_email_features(emails: List[str]) -> np.ndarray:
         domains_in_email = extract_domain_from_email(email)
         for domain in domains_in_email:
             domain_score, _ = calculate_domain_legitimacy_score(domain)
-            if domain_score >= 5.0:
+            if domain_score >= 4.0:  # Match new legitimacy threshold
                 suspicious_link_count = max(0, suspicious_link_count - 1)  # Reduce penalty for each legitimate domain
         
         num_suspicious_links[i] = min(suspicious_link_count, 10)
@@ -259,7 +295,7 @@ def extract_enhanced_email_features(emails: List[str]) -> np.ndarray:
         
         # Reduce urgency score for legitimate business communications
         legitimacy_score = max([calculate_domain_legitimacy_score(d)[0] for d in extract_domain_from_email(email)] + [0.0])
-        if legitimacy_score >= 5.0:
+        if legitimacy_score >= 4.0:  # Match new legitimacy threshold
             urgency_score = max(0, urgency_score * (1 - legitimacy_score/15.0))  # Reduce based on legitimacy score
         
         phishing_urgency_score[i] = min(urgency_score, 10)
@@ -279,7 +315,7 @@ def extract_enhanced_email_features(emails: List[str]) -> np.ndarray:
             cred_score += len(matches) * 2
         
         # Don't penalize legitimate password reset emails
-        if legitimacy_score >= 5.0 and ('password' in email_lower or 'account' in email_lower):
+        if legitimacy_score >= 4.0 and ('password' in email_lower or 'account' in email_lower):  # Match new legitimacy threshold
             cred_score = max(0, cred_score * (1 - legitimacy_score/12.0))
         
         credential_harvesting_score[i] = min(cred_score, 10)
@@ -430,10 +466,21 @@ async def predict_enhanced(email: EmailInput):
         is_legit, legit_reason = is_legitimate_sender(email_text)
         
         # Override prediction for clearly legitimate emails
-        if is_legit and phishing_confidence < 0.8:  # Only override if not extremely suspicious
+        if is_legit:  # Always override for legitimate senders
             prediction = 0  # Mark as safe
-            safe_confidence = max(0.85, safe_confidence)  # Boost confidence for legitimate senders
-            phishing_confidence = 1 - safe_confidence
+            # Force very low phishing confidence for legitimate senders
+            domains = extract_domain_from_email(email_text)
+            max_domain_score = max([calculate_domain_legitimacy_score(d)[0] for d in domains] + [0.0])
+            
+            if max_domain_score >= 6.0:  # High legitimacy score
+                phishing_confidence = 0.05  # 5% risk
+                safe_confidence = 0.95
+            elif max_domain_score >= 4.0:  # Medium legitimacy score (matches threshold)
+                phishing_confidence = 0.10  # 10% risk
+                safe_confidence = 0.90
+            else:  # Still legitimate but lower score
+                phishing_confidence = 0.12  # 12% risk
+                safe_confidence = 0.88
         
         prediction_label = "Phishing Email" if prediction == 1 else "Safe Email"
         # Always return phishing confidence as the main confidence metric for clarity
@@ -486,9 +533,8 @@ async def model_info():
             "Credential harvesting detection",
             "Sender legitimacy scoring"
         ],
-        "core_legitimate_domains_count": len(CORE_LEGITIMATE_DOMAINS),
-        "core_legitimate_domains": list(CORE_LEGITIMATE_DOMAINS),
-        "dynamic_scoring": "Uses domain reputation scoring instead of static whitelist"
+        "dynamic_scoring": "Uses purely dynamic domain reputation scoring",
+        "scoring_factors": ["TLD analysis", "Domain structure", "Business subdomains", "Professional patterns", "Phishing patterns"]
     }
 
 @app.post("/check_sender")
