@@ -214,25 +214,28 @@
         });
 
         function showResult(prediction, confidence) {
-            // Fix: Remove this incorrect logic
-            // if (prediction === "Safe Email" && confidence < 50) {
-            //     prediction = "Phishing Email";
-            // }
-
+            const isPhishing = prediction === "Phishing Email";
+            const riskLevel = confidence;
+            
             predictionSpan.textContent = prediction;
-            predictionSpan.className = `text-sm font-medium ${prediction === "Phishing Email" ? "text-red-400" : "text-green-400"
-                }`;
+            predictionSpan.className = `text-sm font-medium ${isPhishing ? "text-red-400" : "text-green-400"}`;
 
-            confidenceValue.textContent = `${confidence.toFixed(1)}%`;
-            confidenceBar.style.width = `${confidence}%`;
-            confidenceBar.className = `progress-bar-fill ${prediction === "Phishing Email" ? "bg-red-400" : "bg-green-400"
-                }`;
+            // Show phishing risk percentage with clear labeling
+            if (isPhishing) {
+                confidenceValue.textContent = `${riskLevel.toFixed(1)}% phishing risk`;
+                confidenceBar.style.width = `${riskLevel}%`;
+            } else {
+                confidenceValue.textContent = `${riskLevel.toFixed(1)}% phishing risk`;
+                confidenceBar.style.width = `${riskLevel}%`;
+            }
+            
+            confidenceBar.className = `progress-bar-fill ${isPhishing ? "bg-red-400" : "bg-green-400"}`;
 
-            // Fix: Show warning for phishing emails, not safe emails
-            warningDiv.classList.toggle("hidden", prediction !== "Phishing Email");
+            // Show warning for high-risk emails (>15% phishing risk)
+            warningDiv.classList.toggle("hidden", riskLevel <= 15);
 
-            // Add animation classes
-            document.body.className = prediction === "Phishing Email" ? "danger" : "safe";
+            // Add animation classes based on risk level
+            document.body.className = riskLevel > 15 ? "danger" : "safe";
 
             // Remove the animation class after it completes
             setTimeout(() => {

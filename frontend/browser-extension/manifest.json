@@ -16,7 +16,7 @@
     "*://outlook.live.com/*",
     "*://outlook.office.com/*",
     "*://mail.yahoo.com/*",
-    "http://127.0.0.1:8000/*"
+    "https://mailphishing-detection-1.onrender.com/*"
   ],
   
   "background": {

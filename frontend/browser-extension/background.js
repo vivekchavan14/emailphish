@@ -1,5 +1,5 @@
 // Background service worker for PhishMail Guard
-const API_URL = 'http://127.0.0.1:8000/predict';
+const API_URL = 'https://mailphishing-detection-1.onrender.com/predict';
 
 // Cache for recent predictions to avoid duplicate API calls
 const predictionCache = new Map();
@@ -72,7 +72,7 @@ async function handleEmailAnalysis(emailContent, sendResponse) {
     
     let errorMessage = 'Failed to analyze email';
     if (error.message.includes('Failed to fetch')) {
-      errorMessage = 'Cannot connect to backend server. Please ensure it is running on http://127.0.0.1:8000';
+      errorMessage = 'Cannot connect to backend server. Please check your internet connection.';
     } else if (error.message.includes('HTTP 5')) {
       errorMessage = 'Backend server error. Please check server logs';
     } else if (error.message.includes('HTTP 4')) {
