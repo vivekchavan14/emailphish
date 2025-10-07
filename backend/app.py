@@ -5,342 +5,556 @@ import re
 import numpy as np
 from scipy.sparse import hstack
 from fastapi.middleware.cors import CORSMiddleware
+import os
+import logging
+from typing import Dict, List, Tuple
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define email input schema
 class EmailInput(BaseModel):
     email: str
 
 # Initialize FastAPI app
-app = FastAPI(title="Phishing Email Detection API")
+app = FastAPI(title="Enhanced Phishing Email Detection API")
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-print("Loading models and preprocessing components...")
+# Well-known legitimate TLDs and domain characteristics
+LEGITIMATE_TLDS = {
+    '.com', '.org', '.net', '.edu', '.gov', '.mil', '.int',
+    '.co.uk', '.co.in', '.com.au', '.de', '.fr', '.jp', '.cn'
+}
 
-# Define the feature extraction function here - don't rely on pickle for functions
-def extract_email_features(emails):
-    # Create empty arrays for features - MUST match original training (5 features)
-    num_links = np.zeros((len(emails), 1))
-    contains_urgent = np.zeros((len(emails), 1))
-    contains_money = np.zeros((len(emails), 1))
-    contains_suspicious_domains = np.zeros((len(emails), 1))
-    email_length = np.zeros((len(emails), 1))
+# Suspicious TLDs commonly used in phishing
+SUSPICIOUS_TLDS = {
+    '.tk', '.ml', '.ga', '.cf', '.pw', '.club', '.online', '.info', '.xyz', '.top',
+    '.click', '.download', '.loan', '.work', '.men', '.date', '.racing'
+}
+
+# Dynamic legitimacy detection without static lists
+
+# Context-aware legitimate terms that should NOT be flagged
+LEGITIMATE_BUSINESS_TERMS = {
+    'order', 'delivery', 'payment', 'account', 'subscription', 'service', 'update', 
+    'notification', 'receipt', 'invoice', 'statement', 'confirmation', 'booking',
+    'reservation', 'membership', 'profile', 'preferences', 'settings', 'support',
+    'customer', 'welcome', 'thank you', 'regards', 'sincerely', 'team', 'department'
+}
+
+# Enhanced phishing patterns with context awareness
+PHISHING_URGENT_PATTERNS = [
+    r'\b(?:urgent|immediate|asap|act now|limited time|expires? (?:today|tomorrow|soon))\b',
+    r'\b(?:account (?:suspended|blocked|limited|compromised|disabled))\b',
+    r'\b(?:verify (?:immediately|now|within|your account|identity))\b',
+    r'\b(?:click (?:here )?(?:immediately|now|to (?:verify|confirm|update)))\b',
+    r'\b(?:final (?:notice|warning|reminder))\b',
+    r'\b(?:security (?:alert|breach|violation))\b'
+]
+
+PHISHING_MONEY_PATTERNS = [
+    r'\$\d+(?:,\d{3})*(?:\.\d{2})?\s*(?:prize|reward|refund|owed|waiting)',
+    r'\b(?:claim your|you (?:have )?won|congratulations.{0,50}winner)\b',
+    r'\b(?:inheritance|lottery|jackpot|sweepstakes)\b',
+    r'\b(?:transfer.{0,20}million|billion.{0,20}dollars?)\b',
+    r'\b(?:bitcoin|cryptocurrency).{0,30}(?:investment|opportunity|profit)\b'
+]
+
+PHISHING_CREDENTIAL_PATTERNS = [
+    r'\b(?:confirm|verify|update).{0,30}(?:password|credentials|login|account details)\b',
+    r'\b(?:social security|ssn|credit card|banking).{0,20}(?:details|information|number)\b',
+    r'\b(?:enter your|provide your|submit your).{0,20}(?:password|pin|ssn)\b'
+]
+
+# Suspicious URL patterns (not legitimate domains)
+SUSPICIOUS_URL_PATTERNS = [
+    r'https?://[^/]*\.(?:tk|ml|ga|cf|pw|club|online|info|xyz|top)/',
+    r'https?://(?:secure-|verify-|account-|login-)[^/]*\.com/',
+    r'https?://[^/]*(?:security|verify|account|login|update)[^/]*\.(?:net|org|info)/',
+    r'bit\.ly|tinyurl|t\.co|goo\.gl',  # URL shorteners
+    r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'  # IP addresses
+]
+
+def extract_domain_from_email(email_text: str) -> List[str]:
+    """Extract domains from email content"""
+    # Look for From: headers, email domains, URLs, and plain domain mentions
+    domain_patterns = [
+        r'from[:\s]+[^@\s]*@([^\s<>\[\]]+)',  # From header
+        r'@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # Any email domain
+        r'https?://(?:www\.)?([^/\s<>\[\]]+)',  # URL domains
+        r'\b([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b',  # Plain domain mentions (like Claude.ai)
+        r'visit\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "visit domain.com"
+        r'go\s+to\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "go to domain.com"
+        r'log\s+in(?:to)?\s+([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})',  # "log in to domain.com"
+    ]
     
-    # Define enhanced patterns
-    url_pattern = re.compile(r'https?://\S+|www\.\S+')
-    urgent_pattern = re.compile(r'urgent|immediate|alert|attention|important|verify|expire|suspend|deadline|asap|act now|limited time|click here|update.*account|confirm.*identity|suspended.*account', re.IGNORECASE)
-    money_pattern = re.compile(r'money|cash|dollar|payment|bank|account|transfer|credit|loan|bitcoin|cryptocurrency|refund|prize|winner|jackpot|social security|ssn|credit card|password', re.IGNORECASE)
-    suspicious_domains = re.compile(r'\.xyz|\.info|\.top|\.club|\.online|\.tk|\.ml|\.ga|\.cf|\.pw', re.IGNORECASE)
+    domains = set()
+    email_lower = email_text.lower()
     
-    # Extract features
+    for pattern in domain_patterns:
+        matches = re.findall(pattern, email_lower, re.IGNORECASE)
+        for match in matches:
+            domain = match.strip('.,;!?')
+            # Filter out obvious non-domains
+            if ('.' in domain and 
+                len(domain) > 3 and 
+                not domain.startswith('.') and 
+                not domain.endswith('.') and
+                not re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', domain)):  # Skip IP addresses for now
+                domains.add(domain)
+    
+    return list(domains)
+
+def calculate_domain_legitimacy_score(domain: str) -> Tuple[float, List[str]]:
+    """Calculate a legitimacy score for a domain based on multiple dynamic factors"""
+    score = 4.0  # Start with slightly positive bias for legitimate detection
+    reasons = []
+    
+    if not domain or '.' not in domain:
+        return 0.0, ["Invalid domain"]
+    
+    domain_lower = domain.lower()
+    
+    # 1. TLD analysis (trust indicators)
+    domain_parts = domain_lower.split('.')
+    if len(domain_parts) >= 2:
+        tld = '.' + '.'.join(domain_parts[-2:]) if len(domain_parts) >= 3 and domain_parts[-2] in ['co', 'com', 'org'] else '.' + domain_parts[-1]
+        
+        # Highly suspicious TLDs
+        if tld in SUSPICIOUS_TLDS:
+            score -= 3.0
+            reasons.append(f"Suspicious TLD: {tld}")
+        # High-trust TLDs
+        elif tld in ['.edu', '.gov', '.mil']:
+            score += 3.0
+            reasons.append(f"High-trust institutional TLD: {tld}")
+        # Standard business TLDs
+        elif tld in LEGITIMATE_TLDS:
+            score += 1.0
+            reasons.append(f"Standard business TLD: {tld}")
+    
+    # 2. Domain structure analysis
+    main_domain = domain_parts[-2] if len(domain_parts) >= 2 else domain_parts[0]
+    
+    # Professional domain length (not too short, not too long)
+    if 4 <= len(main_domain) <= 15:
+        score += 1.5
+        reasons.append("Professional domain length")
+    elif len(main_domain) > 25:
+        score -= 2.0
+        reasons.append("Unusually long domain name")
+    elif len(main_domain) <= 3:
+        score -= 1.0
+        reasons.append("Very short domain name")
+    
+    # 3. Legitimate business subdomain patterns
+    legitimate_subdomain_patterns = [
+        r'^(noreply|no-reply)\.',
+        r'^(support|help|customer)\.',
+        r'^(notifications?|alerts?)\.',
+        r'^(mail|email)\.',
+        r'^(news|updates?|newsletter)\.',
+        r'^(accounts?|login|auth)\.',
+        r'^(api|app|mobile)\.',
+        r'^(www|web)\.',
+        r'^(secure|safe)\.',
+        r'^(marketing|promo)\.',
+    ]
+    
+    for pattern in legitimate_subdomain_patterns:
+        if re.search(pattern, domain_lower):
+            score += 2.0
+            reasons.append("Legitimate business communication subdomain")
+            break
+    
+    # 4. Professional domain structure
+    if re.search(r'^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]\.[a-zA-Z]{2,}$', domain_lower):
+        score += 1.0
+        reasons.append("Professional domain structure")
+    
+    # 5. Check for suspicious phishing patterns
+    suspicious_patterns = [
+        r'\d{3,}',  # Many consecutive digits
+        r'^\d+[a-z]+\d+$',  # Alternating numbers and letters pattern
+        r'(secure|verify|account|login|update|confirm)-[^.]*$',  # Suspicious prefixes
+        r'-?(secure|verify|account|login|update|confirm)$',  # Suspicious suffixes
+        r'[0-9]+\.',  # Starts with numbers
+    ]
+    
+    for pattern in suspicious_patterns:
+        if re.search(pattern, main_domain):
+            score -= 2.0
+            reasons.append("Suspicious domain pattern detected")
+            break
+    
+    # 6. Domain age indicators (heuristics)
+    # Professional domains tend to have certain characteristics
+    if re.search(r'^[a-z]{3,12}\.(com|org|net)$', domain_lower):  # Clean, simple domains
+        score += 1.0
+        reasons.append("Clean, established domain pattern")
+    
+    # 7. Check for common business terms and service indicators (positive indicators)
+    business_terms = ['corp', 'inc', 'ltd', 'company', 'group', 'team', 'studio', 'tech', 'digital', 'online', 
+                     'service', 'services', 'app', 'apps', 'cloud', 'net', 'web', 'media', 'solutions',
+                     'platform', 'systems', 'software', 'ai', 'labs', 'hub', 'center', 'store', 'shop']
+    for term in business_terms:
+        if term in main_domain:
+            score += 1.0  # Increased from 0.5
+            reasons.append(f"Contains business term: {term}")
+            break
+    
+    # 8. Look for common legitimate service patterns
+    service_patterns = [
+        r'play\.', r'drive\.', r'docs\.', r'accounts?\.', r'auth\.', r'login\.',  # Service subdomains
+        r'cdn\.', r'static\.', r'assets?\.',  # CDN patterns
+        r'blog\.', r'news\.', r'help\.', r'support\.',  # Content subdomains
+        r'api\.', r'app\.', r'mobile\.',  # API/app subdomains
+    ]
+    
+    for pattern in service_patterns:
+        if re.search(pattern, domain_lower):
+            score += 1.5
+            reasons.append("Common service subdomain pattern")
+            break
+    
+    # 8. Penalize IP addresses
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', domain):
+        score -= 5.0
+        reasons.append("IP address instead of domain name")
+    
+    return min(max(score, 0.0), 10.0), reasons
+
+def is_legitimate_sender(email_text: str) -> Tuple[bool, str]:
+    """Dynamic legitimacy check based on multiple factors"""
+    domains = extract_domain_from_email(email_text)
+    
+    if not domains:
+        return False, "No domains found"
+    
+    max_score = 0.0
+    best_reasons = []
+    best_domain = None
+    
+    for domain in domains:
+        score, reasons = calculate_domain_legitimacy_score(domain)
+        if score > max_score:
+            max_score = score
+            best_reasons = reasons
+            best_domain = domain
+    
+    # Consider legitimate if score is above threshold (lowered for better coverage)
+    is_legitimate = max_score >= 4.0
+    
+    reason = f"Domain: {best_domain}, Score: {max_score:.1f}/10, Reasons: {'; '.join(best_reasons)}"
+    
+    return is_legitimate, reason
+
+def extract_enhanced_email_features(emails: List[str]) -> np.ndarray:
+    """Enhanced feature extraction with legitimate email awareness"""
+    num_emails = len(emails)
+    
+    # Initialize feature arrays
+    num_suspicious_links = np.zeros((num_emails, 1))
+    phishing_urgency_score = np.zeros((num_emails, 1))
+    phishing_money_score = np.zeros((num_emails, 1))
+    credential_harvesting_score = np.zeros((num_emails, 1))
+    sender_legitimacy_score = np.zeros((num_emails, 1))
+    
     for i, email in enumerate(emails):
         email_lower = email.lower()
         
-        # Count URLs
-        urls = url_pattern.findall(email)
-        num_links[i] = len(urls)
+        # 1. Suspicious links (excluding legitimate domains)
+        suspicious_link_count = 0
+        for pattern in SUSPICIOUS_URL_PATTERNS:
+            matches = re.findall(pattern, email, re.IGNORECASE)
+            suspicious_link_count += len(matches)
         
-        # Check for urgent/phishing language (enhanced patterns)
-        urgent_matches = urgent_pattern.findall(email_lower)
-        contains_urgent[i] = min(len(urgent_matches), 10)  # Cap at 10 to prevent over-weighting
+        # Don't count links from legitimate domains as suspicious
+        domains_in_email = extract_domain_from_email(email)
+        for domain in domains_in_email:
+            domain_score, _ = calculate_domain_legitimacy_score(domain)
+            if domain_score >= 4.0:  # Match new legitimacy threshold
+                suspicious_link_count = max(0, suspicious_link_count - 1)  # Reduce penalty for each legitimate domain
         
-        # Check for money/personal info terms (enhanced patterns)
-        money_matches = money_pattern.findall(email_lower)
-        contains_money[i] = min(len(money_matches), 10)  # Cap at 10
+        num_suspicious_links[i] = min(suspicious_link_count, 10)
         
-        # Check for suspicious domains
-        contains_suspicious_domains[i] = 1 if suspicious_domains.search(email) else 0
+        # 2. Phishing urgency patterns
+        urgency_score = 0
+        for pattern in PHISHING_URGENT_PATTERNS:
+            matches = re.findall(pattern, email_lower)
+            urgency_score += len(matches)
         
-        # Email length (normalized to match original training)
-        email_length[i] = len(email)
+        # Reduce urgency score for legitimate business communications
+        legitimacy_score = max([calculate_domain_legitimacy_score(d)[0] for d in extract_domain_from_email(email)] + [0.0])
+        if legitimacy_score >= 4.0:  # Match new legitimacy threshold
+            urgency_score = max(0, urgency_score * (1 - legitimacy_score/15.0))  # Reduce based on legitimacy score
+        
+        phishing_urgency_score[i] = min(urgency_score, 10)
+        
+        # 3. Money/prize related phishing
+        money_score = 0
+        for pattern in PHISHING_MONEY_PATTERNS:
+            matches = re.findall(pattern, email_lower)
+            money_score += len(matches) * 2  # Weight these heavily
+        
+        phishing_money_score[i] = min(money_score, 10)
+        
+        # 4. Credential harvesting attempts
+        cred_score = 0
+        for pattern in PHISHING_CREDENTIAL_PATTERNS:
+            matches = re.findall(pattern, email_lower)
+            cred_score += len(matches) * 2
+        
+        # Don't penalize legitimate password reset emails
+        if legitimacy_score >= 4.0 and ('password' in email_lower or 'account' in email_lower):  # Match new legitimacy threshold
+            cred_score = max(0, cred_score * (1 - legitimacy_score/12.0))
+        
+        credential_harvesting_score[i] = min(cred_score, 10)
+        
+        # 5. Sender legitimacy (higher score = more legitimate)
+        domains_in_email = extract_domain_from_email(email)
+        if domains_in_email:
+            max_domain_score = max([calculate_domain_legitimacy_score(d)[0] for d in domains_in_email])
+            sender_legitimacy_score[i] = max_domain_score
+        else:
+            # Check for business-like characteristics if no domains found
+            business_indicators = sum([
+                1 for term in LEGITIMATE_BUSINESS_TERMS 
+                if re.search(r'\b' + re.escape(term) + r'\b', email_lower)
+            ])
+            sender_legitimacy_score[i] = min(business_indicators * 0.5, 3.0)  # Lower max score for domain-less emails
     
-    print(f"Extracted features shape: {np.hstack([num_links, contains_urgent, contains_money, contains_suspicious_domains, email_length]).shape}")
+    # Combine features
+    features = np.hstack([
+        num_suspicious_links,
+        phishing_urgency_score,
+        phishing_money_score,
+        credential_harvesting_score,
+        sender_legitimacy_score
+    ])
     
-    # Return original 5 features to match trained model
-    return np.hstack([num_links, contains_urgent, contains_money, 
-                     contains_suspicious_domains, email_length])
+    logger.info(f"Enhanced feature extraction completed. Shape: {features.shape}")
+    return features
 
-# Load the model and vectorizer
+def calculate_confidence_with_context(features: np.ndarray, prediction_proba: np.ndarray, 
+                                     email_text: str) -> Tuple[float, List[str]]:
+    """Calculate confidence with contextual adjustments"""
+    is_legit, legit_reason = is_legitimate_sender(email_text)
+    phishing_prob = float(prediction_proba[1])
+    safe_prob = float(prediction_proba[0])
+    
+    reasons = []
+    adjusted_confidence = phishing_prob if phishing_prob > safe_prob else safe_prob
+    
+    # Contextual adjustments
+    if is_legit:
+        # Significantly reduce phishing probability for legitimate senders
+        phishing_prob *= 0.2
+        safe_prob = 1 - phishing_prob
+        adjusted_confidence = safe_prob
+        reasons.append(legit_reason)
+        reasons.append("Sender is from a trusted domain")
+    
+    # Generate detailed reasoning
+    email_features = features[0] if len(features.shape) > 1 else features
+    
+    if email_features[0] > 2:  # suspicious links
+        reasons.append(f"Contains {int(email_features[0])} suspicious links")
+    if email_features[1] > 0:  # urgency
+        reasons.append(f"Uses urgent/threatening language (score: {email_features[1]:.1f})")
+    if email_features[2] > 0:  # money
+        reasons.append(f"Contains money/prize claims (score: {email_features[2]:.1f})")
+    if email_features[3] > 0:  # credentials
+        reasons.append(f"Requests personal/credential information (score: {email_features[3]:.1f})")
+    if email_features[4] > 5:  # legitimacy
+        reasons.append("Shows characteristics of legitimate business communication")
+    
+    if not reasons and phishing_prob < 0.3:
+        reasons.append("No significant suspicious patterns detected")
+    
+    return adjusted_confidence, reasons
+
+# Load models (keeping original structure but with enhanced processing)
+print("Loading models and preprocessing components...")
+
 try:
-    # Try to load from the backend directory first
+    # Try to load advanced model
     try:
-        model_path = 'backend/model.pkl'
-        vectorizer_path = 'backend/vectorizer.pkl'
+        model_path = 'backend/model.pkl' if os.path.exists('backend/model.pkl') else 'model.pkl'
+        vectorizer_path = 'backend/vectorizer.pkl' if os.path.exists('backend/vectorizer.pkl') else 'vectorizer.pkl'
+        
         with open(model_path, 'rb') as model_file:
             model = pickle.load(model_file)
         
         with open(vectorizer_path, 'rb') as vectorizer_file:
             vectorizer = pickle.load(vectorizer_file)
         
-        print(f"Advanced model loaded successfully from {model_path}")
+        print(f"Enhanced model loaded successfully from {model_path}")
         use_advanced_model = True
     except FileNotFoundError:
-        # If not found in backend directory, try root directory
-        model_path = 'model.pkl'
-        vectorizer_path = 'vectorizer.pkl'
-        with open(model_path, 'rb') as model_file:
+        # Try default model
+        default_model_path = 'backend/default_model.pkl' if os.path.exists('backend/default_model.pkl') else 'default_model.pkl'
+        
+        with open(default_model_path, 'rb') as model_file:
             model = pickle.load(model_file)
         
         with open(vectorizer_path, 'rb') as vectorizer_file:
             vectorizer = pickle.load(vectorizer_file)
         
-        print(f"Advanced model loaded successfully from {model_path}")
-        use_advanced_model = True
-except Exception as e:
-    print(f"Error loading advanced model: {e}")
-    print("Attempting to load default model...")
-    
-    try:
-        # Try in backend directory first
-        try:
-            default_model_path = 'backend/default_model.pkl'
-            with open(default_model_path, 'rb') as model_file:
-                model = pickle.load(model_file)
-            
-            with open('backend/vectorizer.pkl', 'rb') as vectorizer_file:
-                vectorizer = pickle.load(vectorizer_file)
-            
-            print(f"Default model loaded from {default_model_path}")
-        except FileNotFoundError:
-            # Try in root directory
-            with open('default_model.pkl', 'rb') as model_file:
-                model = pickle.load(model_file)
-            
-            with open('vectorizer.pkl', 'rb') as vectorizer_file:
-                vectorizer = pickle.load(vectorizer_file)
-            
-            print("Default model loaded from root directory")
-        
+        print(f"Default model loaded from {default_model_path}")
         use_advanced_model = False
-    except Exception as e:
-        print(f"Error loading default model: {e}")
-        raise RuntimeError("Failed to load any model. Please train the model first.")
 
-# Check if BERT is available (optional)
-try:
-    import torch
-    from transformers import BertTokenizer, BertForSequenceClassification
-    
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Try both paths
-    bert_model_paths = ['backend/bert_model', 'bert_model']
-    
-    bert_loaded = False
-    for bert_model_path in bert_model_paths:
-        # Only try to load BERT if the directory exists
-        import os
-        if os.path.exists(bert_model_path):
-            bert_model = BertForSequenceClassification.from_pretrained(bert_model_path)
-            bert_tokenizer = BertTokenizer.from_pretrained(bert_model_path)
-            bert_model.to(device)
-            use_bert = True
-            bert_loaded = True
-            print(f"BERT model loaded successfully from {bert_model_path}")
-            break
-    
-    if not bert_loaded:
-        use_bert = False
-        print("BERT model directories not found, skipping BERT")
 except Exception as e:
-    use_bert = False
-    print(f"BERT model not available: {e}")
+    print(f"Error loading models: {e}")
+    raise RuntimeError("Failed to load any model. Please train the model first.")
 
-# Function to process email for the standard ML model
-def process_email(email_text):
-    # Vectorize with TF-IDF
-    email_vector = vectorizer.transform([email_text])
-    
-    if use_advanced_model:
-        # Extract additional features
-        try:
-            additional_features = extract_email_features([email_text])
-            # Combine features
-            combined_features = hstack([email_vector, additional_features])
-            return combined_features
-        except Exception as e:
-            print(f"Error extracting additional features: {e}")
-            print("Falling back to TF-IDF features only")
-            return email_vector
-    else:
-        return email_vector
+def process_email_enhanced(email_text: str):
+    """Enhanced email processing with contextual awareness"""
+    try:
+        # TF-IDF vectorization
+        email_vector = vectorizer.transform([email_text])
+        
+        # Enhanced feature extraction
+        additional_features = extract_enhanced_email_features([email_text])
+        
+        # Combine features
+        combined_features = hstack([email_vector, additional_features])
+        
+        return combined_features, additional_features
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced email processing: {e}")
+        # Fallback to basic processing
+        return vectorizer.transform([email_text]), None
 
-# Define the predict endpoint
 @app.post("/predict")
-async def predict(email: EmailInput):
-    # Vectorize the input email text
+async def predict_enhanced(email: EmailInput):
+    """Enhanced prediction endpoint with improved accuracy for legitimate emails"""
     email_text = email.email
     
     try:
-        features = process_email(email_text)
+        # Process email with enhanced features
+        features, additional_features = process_email_enhanced(email_text)
         
-        # Predict using the trained model
+        # Make prediction
         prediction = model.predict(features)[0]
         prediction_proba = model.predict_proba(features)[0]
         
-        # Fix confidence calculation - show confidence for the predicted class
-        phishing_confidence = float(prediction_proba[1])  # Probability of being phishing
-        safe_confidence = float(prediction_proba[0])      # Probability of being safe
+        # Enhanced confidence calculation with context
+        if additional_features is not None:
+            confidence, reasons = calculate_confidence_with_context(
+                additional_features, prediction_proba, email_text
+            )
+        else:
+            confidence = float(max(prediction_proba))
+            reasons = ["Basic ML model prediction"]
+        
+        # Determine final prediction label
+        phishing_confidence = float(prediction_proba[1])
+        safe_confidence = float(prediction_proba[0])
+        
+        # Check if it's from a legitimate sender
+        is_legit, legit_reason = is_legitimate_sender(email_text)
+        
+        # Override prediction for clearly legitimate emails
+        if is_legit:  # Always override for legitimate senders
+            prediction = 0  # Mark as safe
+            # Force very low phishing confidence for legitimate senders
+            domains = extract_domain_from_email(email_text)
+            max_domain_score = max([calculate_domain_legitimacy_score(d)[0] for d in domains] + [0.0])
+            
+            if max_domain_score >= 6.0:  # High legitimacy score
+                phishing_confidence = 0.05  # 5% risk
+                safe_confidence = 0.95
+            elif max_domain_score >= 4.0:  # Medium legitimacy score (matches threshold)
+                phishing_confidence = 0.10  # 10% risk
+                safe_confidence = 0.90
+            else:  # Still legitimate but lower score
+                phishing_confidence = 0.12  # 12% risk
+                safe_confidence = 0.88
         
         prediction_label = "Phishing Email" if prediction == 1 else "Safe Email"
-        
-        # Always show confidence for the predicted class (the higher probability)
-        if prediction == 1:  # Phishing
-            confidence = phishing_confidence
-        else:  # Safe
-            confidence = safe_confidence
+        # Always return phishing confidence as the main confidence metric for clarity
+        final_confidence = phishing_confidence
         
         # Debug logging
-        print(f"Prediction: {prediction}, Phishing prob: {phishing_confidence:.3f}, Safe prob: {safe_confidence:.3f}, Final confidence: {confidence:.3f}")
+        logger.info(f"Email from legitimate sender: {is_legit}")
+        logger.info(f"Prediction: {prediction}, Phishing: {phishing_confidence:.3f}, Safe: {safe_confidence:.3f}")
         
-        # Extract features for detailed analysis
-        email_features = extract_email_features([email_text])[0]
-        feature_names = ['num_links', 'contains_urgent', 'contains_money', 
-                        'contains_suspicious_domains', 'email_length',
-                        'suspicious_phrases', 'personal_info_requests',
-                        'link_url_mismatch', 'misspellings']
-        
-        # Generate detailed reasons based on 5 features
-        reasons = []
-        if email_features[0] > 2:  # num_links
-            reasons.append(f"Contains {int(email_features[0])} suspicious links")
-        if email_features[1] > 0:  # contains_urgent
-            reasons.append(f"Uses {int(email_features[1])} urgent/phishing language patterns")
-        if email_features[2] > 0:  # contains_money
-            reasons.append(f"Contains {int(email_features[2])} money/personal info related terms")
-        if email_features[3] > 0:  # contains_suspicious_domains
-            reasons.append("Contains suspicious domains")
-        if email_features[4] > 1000:  # email_length (long emails can be suspicious)
-            reasons.append(f"Unusually long email ({int(email_features[4])} characters)")
-        elif email_features[4] < 50:  # very short emails
-            reasons.append(f"Very short email ({int(email_features[4])} characters)")
-        
-        if not reasons and prediction == 0:
-            reasons.append("No suspicious patterns detected")
-        elif not reasons and prediction == 1:
-            reasons.append("Classified as suspicious by ML model")
-        
-        # Return the prediction result and confidence
         return {
             "prediction": prediction_label,
-            "confidence": confidence,
-            "phishing_confidence": phishing_confidence,
-            "safe_confidence": safe_confidence,
+            "confidence": round(final_confidence, 3),
+            "phishing_confidence": round(phishing_confidence, 3),
+            "safe_confidence": round(safe_confidence, 3),
             "reasons": reasons,
-            "model_type": "Advanced ML" if use_advanced_model else "Basic ML"
+            "is_legitimate_sender": is_legit,
+            "model_type": "Enhanced ML with Legitimate Email Detection"
         }
+        
     except Exception as e:
         import traceback
+        logger.error(f"Prediction failed: {str(e)}")
         return {
             "error": f"Prediction failed: {str(e)}",
             "traceback": traceback.format_exc()
         }
 
-# Add BERT endpoint if available
-if use_bert:
-    @app.post("/predict_bert")
-    async def predict_bert(email: EmailInput):
-        email_text = email.email
-        
-        try:
-            # Tokenize
-            inputs = bert_tokenizer(
-                email_text,
-                padding='max_length',
-                truncation=True,
-                max_length=512,
-                return_tensors='pt'
-            ).to(device)
-            
-            # Predict
-            bert_model.eval()
-            with torch.no_grad():
-                outputs = bert_model(**inputs)
-            
-            logits = outputs.logits
-            probabilities = torch.softmax(logits, dim=1).cpu().numpy()[0]
-            prediction = int(np.argmax(probabilities))
-            confidence = float(probabilities[prediction])
-            
-            prediction_label = "Safe Email" if prediction == 0 else "Phishing Email"
-            
-            return {
-                "prediction": prediction_label,
-                "confidence": confidence,
-                "model_type": "BERT"
-            }
-        except Exception as e:
-            import traceback
-            return {
-                "error": f"BERT prediction failed: {str(e)}",
-                "traceback": traceback.format_exc()
-            }
-
-# Health check endpoint
 @app.get("/")
 async def root():
     return {
         "status": "online",
-        "models_available": {
-            "standard_ml": True,
-            "advanced_ml": use_advanced_model,
-            "bert": use_bert
-        }
+        "model_type": "Enhanced Phishing Detection with Legitimate Email Support",
+        "version": "2.0",
+        "features": [
+            "Legitimate domain whitelist",
+            "Context-aware pattern matching",
+            "Enhanced confidence calculation",
+            "Reduced false positives for business emails"
+        ]
     }
 
-# Additional endpoints for model information
 @app.get("/model_info")
 async def model_info():
-    model_info = {
-        "standard_ml": {
-            "type": type(model).__name__,
-            "available": True
-        },
-        "advanced_features": use_advanced_model,
-        "bert_available": use_bert
+    return {
+        "model_type": type(model).__name__,
+        "features": [
+            "Suspicious link detection",
+            "Phishing urgency patterns", 
+            "Money/prize scam detection",
+            "Credential harvesting detection",
+            "Sender legitimacy scoring"
+        ],
+        "dynamic_scoring": "Uses purely dynamic domain reputation scoring",
+        "scoring_factors": ["TLD analysis", "Domain structure", "Business subdomains", "Professional patterns", "Phishing patterns"]
     }
-    
-    # Add feature importance if available
-    if hasattr(model, 'feature_importances_'):
-        # Get feature names if possible
-        feature_names = []
-        try:
-            feature_names = vectorizer.get_feature_names_out().tolist()
-            # Add names for enhanced features
-            feature_names.extend(['num_links', 'contains_urgent', 'contains_money', 
-                               'contains_suspicious_domains', 'email_length'])
-        except:
-            feature_names = [f"feature_{i}" for i in range(len(model.feature_importances_))]
-        
-        # Get top 10 features
-        importances = model.feature_importances_
-        indices = np.argsort(importances)[::-1][:10]
-        
-        top_features = [{"name": feature_names[i] if i < len(feature_names) else f"feature_{i}", 
-                         "importance": float(importances[i])} 
-                        for i in indices]
-        
-        model_info["top_features"] = top_features
-    
-    return model_info
 
-# Start server when running this file directly
+@app.post("/check_sender")
+async def check_sender_legitimacy(email: EmailInput):
+    """Endpoint to specifically check if an email sender is legitimate"""
+    is_legit, reason = is_legitimate_sender(email.email)
+    domains = extract_domain_from_email(email.email)
+    
+    return {
+        "is_legitimate": is_legit,
+        "reason": reason,
+        "extracted_domains": domains,
+        "domain_scores": {d: calculate_domain_legitimacy_score(d)[0] for d in domains},
+        "domain_analysis": {d: calculate_domain_legitimacy_score(d)[1] for d in domains}
+    }
+
 if __name__ == "__main__":
     import uvicorn
-    import os
-    
-    # Get port from environment variable (for Render deployment) or default to 8000
     port = int(os.environ.get("PORT", 8000))
-    
-    # Use 0.0.0.0 for production deployment, 127.0.0.1 for local development
     host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
     
-    print(f"Starting server on {host}:{port}")
+    print(f"Starting Enhanced Phishing Detection Server on {host}:{port}")
     uvicorn.run("app:app", host=host, port=port, reload=False)
